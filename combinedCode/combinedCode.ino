@@ -6,8 +6,8 @@
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4
 
-#define DATA_PIN  5    // DIN
-#define CLK_PIN   4    // CLK
+#define DATA_PIN  5   // DIN
+#define CLK_PIN   4   // CLK
 #define CS_PIN    15   // CS (LOAD)
 
 MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
@@ -22,17 +22,14 @@ const uint8_t symbol_x[8] = {
 };
 
 // ---------- RC522 CONFIG ------------
-#define RST_PIN  16 
-#define SS_PIN   2   
+#define RST_PIN  16       // Reset
+#define SS_PIN   2      // SDA
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-// ---------- ULTRASONIC SENSOR PINS ----------
-#define TRIG_PIN  14   // D6 (safe pin)
-#define ECHO_PIN  12   // D7 (safe pin)
-
 // ------ AUTHORIZED CARDS ------
 const byte authorized1[4] = {0xCC, 0xD2, 0x05, 0x02};
+// const byte authorized2[4] = {0xB1, 0x2A, 0x06, 0x02};
 
 // --------- Helper: Draw 8x8 symbol ----------
 void drawSymbol(uint8_t module, const uint8_t* symbol) {
@@ -41,27 +38,16 @@ void drawSymbol(uint8_t module, const uint8_t* symbol) {
   }
 }
 
-// --------- Ultrasonic Measure Function ----------
-long getDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // timeout 30ms
-  long distance = duration * 0.0343 / 2;
-
-  return distance;
-}
-
 // Check if UID matches an authorized card
 bool checkAuthorization(byte *uid) {
   bool match1 = true;
+  // bool match2 = true;
+
   for (int i = 0; i < 4; i++) {
     if (uid[i] != authorized1[i]) match1 = false;
+    // if (uid[i] != authorized2[i]) match2 = false;
   }
+
   return match1;
 }
 
@@ -78,23 +64,12 @@ void setup() {
   SPI.begin();
   mfrc522.PCD_Init();
 
-  // Ultrasonic init
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
-  Serial.println("System Ready...");
+  Serial.println("Place card on RC522...");
 }
 
 void loop() {
 
-  // --------- ULTRASONIC MEASURE AND PRINT ---------
-  long distance = getDistance();
-  Serial.print("Distance: ");
-  Serial.print(distance);
-  Serial.println(" cm");
-  delay(200);
-
-  // --------- RFID CHECK ---------
+  // No new card → do nothing
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial()) return;
 
@@ -108,19 +83,21 @@ void loop() {
 
   bool authorized = checkAuthorization(mfrc522.uid.uidByte);
 
+  // Clear display before showing a symbol
   mx.clear();
 
   if (authorized) {
     Serial.println("ACCESS GRANTED ✔");
-    drawSymbol(0, symbol_check);
+    drawSymbol(0, symbol_check);   // show tick on module 0
   } else {
     Serial.println("ACCESS DENIED ❌");
-    drawSymbol(0, symbol_x);
+    drawSymbol(0, symbol_x);       // show X on module 0
   }
 
   delay(2000);
   mx.clear();
 
+  // Stop crypto to allow next card
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 }
