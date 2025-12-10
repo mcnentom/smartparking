@@ -1,18 +1,20 @@
-#include <SPI.h>
-#include <MFRC522.h>
 #include <MD_MAX72xx.h>
+#include <SPI.h>
 
-// -------- LED MATRIX CONFIG -----------
+// Choose your module type
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-#define MAX_DEVICES 4
 
-#define DATA_PIN  5    // DIN
-#define CLK_PIN   4    // CLK
-#define CS_PIN    15   // CS (LOAD)
+// Number of 8x8 matrices chained
+#define MAX_DEVICES 4  // adjust to how many modules you have
+// Pin setup for NodeMCU (ESP8266)
+#define DATA_PIN  0   // DIN
+#define CLK_PIN   15   // CLK
+#define CS_PIN    5  // CS (LOAD)
 
+
+// Create the LED matrix object
 MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
-
-// --- SYMBOLS (8x8) ---
+// --- Some symbols (8x8 bitmaps) ---
 const uint8_t symbol_check[8] = {
   0x00, 0x01, 0x03, 0x86, 0xCC, 0x78, 0x30, 0x00
 };
@@ -21,106 +23,48 @@ const uint8_t symbol_x[8] = {
   0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81
 };
 
-// ---------- RC522 CONFIG ------------
-#define RST_PIN  16 
-#define SS_PIN   2   
+const uint8_t symbol_car[8] = {
+  0x18, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x18, 0x00
+};
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);
-
-// ---------- ULTRASONIC SENSOR PINS ----------
-#define TRIG_PIN  14   // D6 (safe pin)
-#define ECHO_PIN  12   // D7 (safe pin)
-
-// ------ AUTHORIZED CARDS ------
-const byte authorized1[4] = {0xCC, 0xD2, 0x05, 0x02};
-
-// --------- Helper: Draw 8x8 symbol ----------
+// Helper function: draw a symbol on one 8x8 matrix
 void drawSymbol(uint8_t module, const uint8_t* symbol) {
   for (uint8_t col = 0; col < 8; col++) {
     mx.setColumn(module, col, symbol[col]);
   }
 }
 
-// --------- Ultrasonic Measure Function ----------
-long getDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // timeout 30ms
-  long distance = duration * 0.0343 / 2;
-
-  return distance;
-}
-
-// Check if UID matches an authorized card
-bool checkAuthorization(byte *uid) {
-  bool match1 = true;
-  for (int i = 0; i < 4; i++) {
-    if (uid[i] != authorized1[i]) match1 = false;
-  }
-  return match1;
-}
-
 void setup() {
   Serial.begin(115200);
-  delay(1500);
-
-  // LED Matrix init
+  Serial.println("MAX7219 Test Starting...");
   mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 5);
+  mx.control(MD_MAX72XX::INTENSITY, 5);  // brightness 0–15
   mx.clear();
-
-  // RC522 init
-  SPI.begin();
-  mfrc522.PCD_Init();
-
-  // Ultrasonic init
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
-  Serial.println("System Ready...");
 }
 
 void loop() {
-
-  // --------- ULTRASONIC MEASURE AND PRINT ---------
-  long distance = getDistance();
-  Serial.print("Distance: ");
-  Serial.print(distance);
-  Serial.println(" cm");
-  delay(200);
-
-  // --------- RFID CHECK ---------
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
-
-  Serial.print("Card UID: ");
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-    Serial.print(mfrc522.uid.uidByte[i], HEX);
-    Serial.print(" ");
+  // Cycle through modules and symbols
+  for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+    Serial.printf("Showing symbols on module %d\n", i);
+    // Show checkmark
+    mx.clear();
+    drawSymbol(i, symbol_check);
+    delay(1000);
+    // Show X
+    mx.clear();
+    drawSymbol(i, symbol_x);
+    delay(1000);
+    // Show car
+    mx.clear();
+    drawSymbol(i, symbol_car);
+    delay(1000);
   }
-  Serial.println();
-
-  bool authorized = checkAuthorization(mfrc522.uid.uidByte);
-
-  mx.clear();
-
-  if (authorized) {
-    Serial.println("ACCESS GRANTED ✔");
-    drawSymbol(0, symbol_check);
-  } else {
-    Serial.println("ACCESS DENIED ❌");
-    drawSymbol(0, symbol_x);
+  // Show all modules at once
+  Serial.println("Lighting all modules with cars...");
+  for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+    drawSymbol(i, symbol_car);
   }
-
   delay(2000);
   mx.clear();
-
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
+  delay(1000);
 }
